@@ -3,13 +3,17 @@ package com.example.marlon.musicstream
 import android.app.NotificationChannel
 import android.app.NotificationManager
 import android.app.PendingIntent
-import android.app.Service
+import android.content.BroadcastReceiver
+
 import android.content.Context
 import android.content.Intent
+import android.content.IntentFilter
 import android.media.AudioManager
 import android.media.MediaPlayer
 import android.os.*
 import android.support.v4.app.NotificationCompat
+import android.support.v4.media.MediaBrowserCompat
+import android.support.v4.media.MediaBrowserServiceCompat
 import android.support.v4.media.session.MediaButtonReceiver
 import android.support.v4.media.session.MediaSessionCompat
 import android.support.v4.media.session.PlaybackStateCompat
@@ -18,7 +22,14 @@ import android.support.v4.media.session.PlaybackStateCompat
 const val CHANNEL_ID = "2"
 const val CHANNEL_NAME = "LOW CHANNEL"
 
-class RadioService() : Service(), Parcelable {
+class RadioService() : MediaBrowserServiceCompat(), Parcelable {
+    override fun onLoadChildren(parentId: String, result: Result<MutableList<MediaBrowserCompat.MediaItem>>) {
+        TODO("not implemented") //To change body of created functions use File | Settings | File Templates.
+    }
+
+    override fun onGetRoot(clientPackageName: String, clientUid: Int, rootHints: Bundle?): BrowserRoot? {
+        TODO("not implemented") //To change body of created functions use File | Settings | File Templates.
+    }
 
 
     private val iBinder = LocalBinder()
@@ -118,22 +129,46 @@ class RadioService() : Service(), Parcelable {
 //        remoteView.setTextViewText(R.id.text, "Url")
         mediaSession = MediaSessionCompat(this, "radio")
         val controller = mediaSession.controller
+        val intentFilter = IntentFilter(AudioManager.ACTION_AUDIO_BECOMING_NOISY)
 
+        val noisyReceiver = object : BroadcastReceiver() {
+            override fun onReceive(context: Context?, intent: Intent?) {
+                pauseAudio()
+            }
+        }
 
         // Enable callbacks from MediaButtons and TransportControls
         mediaSession.setFlags(
                 MediaSessionCompat.FLAG_HANDLES_MEDIA_BUTTONS or MediaSessionCompat.FLAG_HANDLES_TRANSPORT_CONTROLS)
 
+        val callbacks = object : MediaSessionCompat.Callback() {
+            override fun onPlay() {
+                mediaSession.isActive = true
+                mediaPlayer?.start()
+                registerReceiver(noisyReceiver, intentFilter)
+            }
+
+            override fun onStop() {
+                unregisterReceiver(noisyReceiver)
+                mediaSession.isActive = false
+                destroyAudioPlayer()
+            }
+
+            override fun onPause() {
+                pauseAudio()
+             }
+        }
         // Set an initial PlaybackState with ACTION_PLAY, so media buttons can start the player
         val stateBuilder = PlaybackStateCompat.Builder()
                 .setActions(PlaybackStateCompat.ACTION_PLAY or PlaybackStateCompat.ACTION_PLAY_PAUSE)
         mediaSession.setPlaybackState(stateBuilder.build())
 
+
         // MySessionCallback() has methods that handle callbacks from a media controller
-        //mediaSession.setCallback(callback)
+        mediaSession.setCallback(callbacks)
 
         // Set the session's token so that client activities can communicate with it.
-        //setSessionToken(mediaSession.sessionToken)
+        sessionToken = mediaSession.sessionToken
 
 
         // creates a notification builder depending of the android version
