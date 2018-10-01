@@ -1,42 +1,37 @@
-@file:Suppress("IMPLICIT_CAST_TO_ANY")
-
 package com.example.marlon.musicstream
 
-import android.app.NotificationChannel
-import android.app.NotificationManager
-import android.app.PendingIntent
 import android.content.ComponentName
 import android.content.Context
 import android.content.Intent
 import android.content.ServiceConnection
-import android.os.Build
 import android.os.Bundle
 import android.os.IBinder
-import android.support.v4.app.NotificationCompat
 import android.support.v7.app.AppCompatActivity
 import android.widget.ImageButton
 import kotlinx.android.synthetic.main.activity_main.*
-
-const val CHANNEL_ID = "default"
 
 
 class MainActivity : AppCompatActivity() {
 
     private var isMuted = false
+    private var bound = false
     private lateinit var info: ImageButton
     private lateinit var play: ImageButton
     private lateinit var stop: ImageButton
     private lateinit var mute: ImageButton
-    private var radioServiceBinder: RadioServiceBinder? = null
+    private var radioService: RadioService? = null
 
     // This service connection object is the bridge between activity and background service.
     private val serviceConnection = object : ServiceConnection {
         override fun onServiceConnected(componentName: ComponentName, iBinder: IBinder) {
             // Cast and assign background service's onBind method returned iBinder object.
-            radioServiceBinder = iBinder as RadioServiceBinder
+            val binder = iBinder as RadioService.LocalBinder
+            radioService = binder.getService()
+            bound = true
         }
 
         override fun onServiceDisconnected(componentName: ComponentName) {
+            bound = false
         }
     }
 
@@ -45,8 +40,14 @@ class MainActivity : AppCompatActivity() {
         super.onCreate(savedInstanceState)
         setContentView(R.layout.activity_main)
 
-        // Bind background audio service when activity is created.
-        bindRadioService()
+        savedInstanceState?.run {
+            radioService = getParcelable("key")
+            isMuted = getBoolean("keyMute")
+            changeMuteButton()
+            changePlayButton()
+        }
+
+        // Adds on click method to the buttons
         info = info_button
         play = play_pause_button
         stop = stop_button
@@ -57,62 +58,33 @@ class MainActivity : AppCompatActivity() {
         mute.setOnClickListener { muteAudio() }
     }
 
-
-    private fun createNotificationChannel() {
-        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.O) {
-            return
-        }
-        val notificationManager = this.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
-        val channel = NotificationChannel(CHANNEL_ID,
-                "Radio stream",
-                NotificationManager.IMPORTANCE_DEFAULT)
-        channel.description = "Channel description"
-        notificationManager.createNotificationChannel(channel)
-    }
-
-
-    fun sendToForeground() {
-        createNotificationChannel()
-        val notificationIntent = Intent(this, this@MainActivity::class.java)
-        val pendingIntent = PendingIntent.getService(this, 0, notificationIntent, 0)
-
-        val notification = NotificationCompat.Builder(this, CHANNEL_ID)
-                .setContentTitle(getText(R.string.notification_message))
-                .setContentText(getText(R.string.url))
-                .setSmallIcon(R.mipmap.ic_launcher_foreground)
-                .setContentIntent(pendingIntent)
-                .build()
-
-        //startForeground(1, notification)
+    override fun onStart() {
+        super.onStart()
+        // Bind to LocalService
+        bindRadioService()
     }
 
     // Plays music if not playing, pause if is playing
     private fun playMusic() {
-        if (radioServiceBinder?.mediaPlayer?.isPlaying == true) {
-            radioServiceBinder?.pauseAudio()
-            play.setImageResource(R.drawable.ic_play_arrow_24dp)
+        if (radioService?.mediaPlayer?.isPlaying == true) {
+            radioService?.pauseAudio()
         } else {
-            radioServiceBinder?.startAudio()
-            play.setImageResource(R.drawable.ic_pause_black_24dp)
-
+            radioService?.startAudio()
         }
+        changePlayButton()
     }
 
+    // Stops the music and destroys the media player
+    //Changes the play icon button
     private fun stopMusic() {
-        radioServiceBinder?.stopAudio()
+        radioService?.destroyAudioPlayer()
         play.setImageResource(R.drawable.ic_play_arrow_24dp)
     }
 
 
     private fun muteAudio() {
         // Mute the stream audio or unmute
-        if (isMuted) {
-            radioServiceBinder?.mediaPlayer?.setVolume(1f, 1f)
-            mute.setImageResource(R.drawable.ic_volume_off_24dp)
-        } else {
-            radioServiceBinder?.mediaPlayer?.setVolume(0f, 0f)
-            mute.setImageResource(R.drawable.ic_volume_up_24dp)
-        }
+        changeMuteButton()
         isMuted = !isMuted
     }
 
@@ -125,24 +97,61 @@ class MainActivity : AppCompatActivity() {
 
     // Binds the radio service with the main activity
     private fun bindRadioService() {
-        if (radioServiceBinder == null) {
+        if (radioService == null) {
             val intent = Intent(this@MainActivity, RadioService::class.java)
 
             // Below code will invoke serviceConnection's onServiceConnected method.
             bindService(intent, serviceConnection, Context.BIND_AUTO_CREATE)
         }
+
     }
 
     // Unbound background audio service with caller activity.
     private fun unBoundAudioService() {
-        if (radioServiceBinder != null) {
+        if (radioService != null) {
             unbindService(serviceConnection)
         }
+    }
+
+    override fun onRestoreInstanceState(savedInstanceState: Bundle?) {
+        super.onRestoreInstanceState(savedInstanceState)
+        savedInstanceState?.run {
+            radioService = getParcelable("key")
+            isMuted = getBoolean("keyMute")
+        }
+        changeMuteButton()
+        changePlayButton()
+    }
+
+    override fun onSaveInstanceState(outState: Bundle?) {
+        outState?.run {
+            putParcelable("key", radioService)
+            putBoolean("keyMute", isMuted)
+        }
+        super.onSaveInstanceState(outState)
     }
 
     override fun onDestroy() {
         // Unbound background audio service when activity is destroyed.
         unBoundAudioService()
         super.onDestroy()
+    }
+
+    //  Changes the icon on the button depending if is muted
+    private fun changeMuteButton() = if (!isMuted) {
+        radioService?.mediaPlayer?.setVolume(1f, 1f)
+        mute.setImageResource(R.drawable.ic_volume_off_24dp)
+    } else {
+        radioService?.mediaPlayer?.setVolume(0f, 0f)
+        mute.setImageResource(R.drawable.ic_volume_up_24dp)
+    }
+
+    // Changes the icon on the button depending if is playing
+    private fun changePlayButton() {
+        if (radioService?.mediaPlayer?.isPlaying != true) {
+            play.setImageResource(R.drawable.ic_play_arrow_24dp)
+        } else {
+            play.setImageResource(R.drawable.ic_pause_black_24dp)
+        }
     }
 }

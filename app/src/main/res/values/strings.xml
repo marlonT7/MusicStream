@@ -9,9 +9,12 @@
     <string name="title_activity_info">Info</string>
     <string name="radio_espantoso">Radio espantoso</string>
     <string name="radio_espantoso_description">is a radio station that appears in Grand Theft Auto: Vice City and Grand Theft Auto: Vice City Stories, and plays Latin jazz, mambo, son, salsa and Latin funk among other genres. The dialogue in this station is in Spanish, apart from a few snippets in English. In 1984, when GTA Vice City Stories takes place, the DJ is Hector Hernandez and, according to him, the station is sponsored by Jeremy Robard. In 1986, the setting of GTA Vice City, Pepe is the DJ.</string>
-    <string name="radio_stream">Radio stream</string>
     <string name="channel_description">Is a channel for radio notifications</string>
     <string name="channel_name">Radio channel</string>
-    <string name="notification_title">Music strem</string>
+    <string name="notification_title">Music stream</string>
     <string name="notification_message">You\'re listening to</string>
+    <string name="label_play">play</string>
+    <string name="label_pause">pause</string>
+    <string name="radio_stream_image">Radio stream image</string>
+    <string name="x">X</string>
 </resources>
